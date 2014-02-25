@@ -3,7 +3,7 @@ tassembly
 
 JSON IR for templating and corresponding runtime implementation
 
-**Fast but safe**
+**"Fast but safe"**
 
 Security guarantees of DOM-based templating (tag balancing, context-sensitive
 href/src/style sanitization etc) with the performance of string-based templating.
