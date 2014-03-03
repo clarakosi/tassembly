@@ -33,21 +33,37 @@ TAssembly.prototype._getUID = function() {
 	return this.uid;
 };
 
+/**
+ * Call a callable, or return a plain value.
+ *
+ * If support for IE <= 8 is not needed we could also use
+ * Object.defineProperty to define callables as getters instead for lower
+ * overhead.
+ */
+TAssembly.prototype._maybeCall = function(val) {
+	if (!val || val.constructor !== Function) {
+		return val;
+	} else {
+		return val();
+	}
+}
+
+
 TAssembly.prototype._evalExpr = function (expression, scope) {
 	// Simple variable / fast path
 	if (/^[a-zA-Z_]+$/.test(expression)) {
-		return scope[expression];
+		return this._maybeCall(scope[expression]);
 	}
 
 	// String literal
 	if (/^'.*'$/.test(expression)) {
-		return expression.slice(1,-1).replace(/\\'/g, "'");
+		return this._maybeCall(expression.slice(1,-1).replace(/\\'/g, "'"));
 	}
 
 	// Dot notation
 	if (/^[a-zA-Z_]+(?:[.][a-zA-Z_])+$/.test(expression)) {
 		try {
-			return new Function('scope', 'return scope.' + expression)(scope);
+			return this._maybeCall(new Function('scope', 'return scope.' + expression)(scope));
 		} catch (e) {
 			return '';
 		}
@@ -70,7 +86,8 @@ TAssembly.prototype._evalExpr = function (expression, scope) {
 function evalExprStub(expr) {
 	if (/^[a-zA-Z_]+$/.test(expr)) {
 		// simple variable, the fast and common case
-		return 'scope[' + JSON.stringify(expr) + ']';
+		// XXX: Omit this._maybeCall if not on IE (defineProperty available)
+		return 'this._maybeCall(scope[' + JSON.stringify(expr) + '])';
 	} else {
 		return 'this._evalExpr(' + JSON.stringify(expr) + ', scope)';
 	}
