@@ -26,6 +26,8 @@ function TAssembly () {
 	// Cache for sub-structure parameters. Storing them globally keyed on uid
 	// makes it possible to reuse compilations.
 	this.cache = {};
+	// Partials: tassembly objects
+	this.partials = {};
 }
 
 TAssembly.prototype._getUID = function() {
@@ -46,7 +48,7 @@ TAssembly.prototype._maybeCall = function(val) {
 	} else {
 		return val();
 	}
-}
+};
 
 
 TAssembly.prototype._evalExpr = function (expression, scope) {
@@ -93,21 +95,38 @@ function evalExprStub(expr) {
 	}
 }
 
+TAssembly.prototype._getTemplate = function (tpl, cb) {
+	if (Array.isArray(tpl)) {
+		return tpl;
+	} else {
+		// String literal: strip quotes
+		if (/^'.*'$/.test(tpl)) {
+			tpl = tpl.slice(1,-1).replace(/\\'/g, "'");
+		}
+		return this.partials[tpl];
+	}
+};
+
 TAssembly.prototype.ctlFn_foreach = function(options, scope, cb) {
 	// deal with options
 	var iterable = this._evalExpr(options.data, scope),
 		// worth compiling the nested template
-		tpl = this.compile(options.tpl, cb),
+		tpl = this.compile(this._getTemplate(options.tpl), cb),
 		l = iterable.length;
 	for(var i = 0; i < l; i++) {
 		tpl(iterable[i]);
 	}
 };
+TAssembly.prototype.ctlFn_template = function(options, scope, cb) {
+	// deal with options
+	var data = this._evalExpr(options.data, scope);
+	this.render(this._getTemplate(options.tpl), data, cb);
+};
 
 TAssembly.prototype.ctlFn_with = function(options, scope, cb) {
 	var val = this._evalExpr(options.data, scope);
 	if (val) {
-		this.render(options.tpl, val, cb);
+		this.render(this._getTemplate(options.tpl), val, cb);
 	} else {
 		// TODO: hide the parent element similar to visible
 	}
@@ -126,9 +145,25 @@ TAssembly.prototype.ctlFn_ifnot = function(options, scope, cb) {
 };
 
 TAssembly.prototype.ctlFn_attr = function(options, scope, cb) {
-	var self = this;
+	var self = this,
+		attVal;
 	Object.keys(options).forEach(function(name) {
-		var attVal = self._evalExpr(options[name], scope);
+		var attObj = options[name];
+		if (typeof attObj === 'object') {
+			attVal = attObj.v || '';
+			if (attObj.append && Array.isArray(attObj.append)) {
+				attObj.append.forEach(function(app) {
+					if (app.if && self._evalExpr(app, scope)) {
+						attVal += app.v || '';
+					}
+				});
+			}
+			if (attObj.v === null && !attVal) {
+				attVal = null;
+			}
+		} else {
+			attVal = self._evalExpr(options[name], scope);
+		}
 		if (attVal !== null) {
 			cb(' ' + name + '="'
 				// TODO: context-sensitive sanitization on href / src / style
@@ -241,6 +276,11 @@ TAssembly.prototype.render = function(template, scope, cb) {
 		};
 	}
 
+	// Just call a cached compiled version if available
+	if (template.__cachedFn) {
+		return template.__cachedFn.call(this, scope, cb);
+	}
+
 	var self = this,
 		l = template.length;
 	for(var i = 0; i < l; i++) {
@@ -259,21 +299,6 @@ TAssembly.prototype.render = function(template, scope, cb) {
 				}
 				cb( ('' + val) // convert to string
 						.replace(/[<&]/g, this._xmlEncoder)); // and escape
-			} else if ( fnName === 'attr' ) {
-				var keys = Object.keys(bit[1]),
-					options = bit[1];
-				for (var j = 0; j < keys.length; j++) {
-					var name = keys[j];
-					val = self._evalExpr(options[name], scope);
-					if (val !== null) {
-						if (!val && val !== 0) {
-							val = '';
-						}
-						cb(' ' + name + '="'
-							+ (''+val).replace(/[<&"]/g, this._xmlEncoder)
-							+ '"');
-					}
-				}
 			} else {
 
 				try {
