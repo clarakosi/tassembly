@@ -26,6 +26,8 @@ function TAssembly () {
 	// Cache for sub-structure parameters. Storing them globally keyed on uid
 	// makes it possible to reuse compilations.
 	this.cache = {};
+	// Partials: tassembly objects
+	this.partials = {};
 }
 
 TAssembly.prototype._getUID = function() {
@@ -46,7 +48,7 @@ TAssembly.prototype._maybeCall = function(val) {
 	} else {
 		return val();
 	}
-}
+};
 
 
 TAssembly.prototype._evalExpr = function (expression, scope) {
@@ -93,21 +95,38 @@ function evalExprStub(expr) {
 	}
 }
 
+TAssembly.prototype._getTemplate = function (tpl, cb) {
+	if (Array.isArray(tpl)) {
+		return tpl;
+	} else {
+		// String literal: strip quotes
+		if (/^'.*'$/.test(tpl)) {
+			tpl = tpl.slice(1,-1).replace(/\\'/g, "'");
+		}
+		return this.partials[tpl];
+	}
+};
+
 TAssembly.prototype.ctlFn_foreach = function(options, scope, cb) {
 	// deal with options
 	var iterable = this._evalExpr(options.data, scope),
 		// worth compiling the nested template
-		tpl = this.compile(options.tpl, cb),
+		tpl = this.compile(this._getTemplate(options.tpl), cb),
 		l = iterable.length;
 	for(var i = 0; i < l; i++) {
 		tpl(iterable[i]);
 	}
 };
+TAssembly.prototype.ctlFn_template = function(options, scope, cb) {
+	// deal with options
+	var data = this._evalExpr(options.data, scope);
+	this.render(this._getTemplate(options.tpl), data, cb);
+};
 
 TAssembly.prototype.ctlFn_with = function(options, scope, cb) {
 	var val = this._evalExpr(options.data, scope);
 	if (val) {
-		this.render(options.tpl, val, cb);
+		this.render(this._getTemplate(options.tpl), val, cb);
 	} else {
 		// TODO: hide the parent element similar to visible
 	}
@@ -239,6 +258,11 @@ TAssembly.prototype.render = function(template, scope, cb) {
 		cb = function(bit) {
 			res.push(bit);
 		};
+	}
+
+	// Just call a cached compiled version if available
+	if (template.__cachedFn) {
+		return template.__cachedFn.call(this, scope, cb);
 	}
 
 	var self = this,
