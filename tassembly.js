@@ -35,37 +35,26 @@ TAssembly.prototype._getUID = function() {
 	return this.uid;
 };
 
-/**
- * Call a callable, or return a plain value.
- *
- * If support for IE <= 8 is not needed we could also use
- * Object.defineProperty to define callables as getters instead for lower
- * overhead.
- */
-TAssembly.prototype._maybeCall = function(val) {
-	if (!val || val.constructor !== Function) {
-		return val;
-	} else {
-		return val();
-	}
-};
-
-
 TAssembly.prototype._evalExpr = function (expression, scope) {
 	// Simple variable / fast path
 	if (/^[a-zA-Z_]+$/.test(expression)) {
-		return this._maybeCall(scope[expression]);
+		return scope[expression];
 	}
 
 	// String literal
 	if (/^'.*'$/.test(expression)) {
-		return this._maybeCall(expression.slice(1,-1).replace(/\\'/g, "'"));
+		return expression.slice(1,-1).replace(/\\'/g, "'");
 	}
 
 	// Dot notation
-	if (/^[a-zA-Z_]+(?:[.][a-zA-Z_])+$/.test(expression)) {
+	// a.b
+	// a[1].b
+	// a()
+	// a.b[3]()
+	expression = '.' + expression;
+	if (/^(?:[.][a-zA-Z_](?:\[[a-zA-Z0-9_]+\])?(?:\( *\))?)+$/.test(expression)) {
 		try {
-			return this._maybeCall(new Function('scope', 'return scope.' + expression)(scope));
+			return new Function('scope', 'return scope' + expression)(scope);
 		} catch (e) {
 			return '';
 		}
@@ -88,8 +77,7 @@ TAssembly.prototype._evalExpr = function (expression, scope) {
 function evalExprStub(expr) {
 	if (/^[a-zA-Z_]+$/.test(expr)) {
 		// simple variable, the fast and common case
-		// XXX: Omit this._maybeCall if not on IE (defineProperty available)
-		return 'this._maybeCall(scope[' + JSON.stringify(expr) + '])';
+		return 'scope[' + JSON.stringify(expr) + ']';
 	} else {
 		return 'this._evalExpr(' + JSON.stringify(expr) + ', scope)';
 	}
@@ -236,7 +224,7 @@ TAssembly.prototype._assemble = function(template, cb) {
 									code.push('val += ' + JSON.stringify(appItem.v || '') + ';');
 									code.push('}');
 								} else if (appItem.ifnot) {
-									code.push('if(!' + evalExprStub(appItem['ifnot']) + '){');
+									code.push('if(!' + evalExprStub(appItem.ifnot) + '){');
 									code.push('val += ' + JSON.stringify(appItem.v || ''));
 									code.push('}');
 								}
@@ -250,7 +238,7 @@ TAssembly.prototype._assemble = function(template, cb) {
 						// escape the attribute value
 						// TODO: hook up context-sensitive sanitization for href,
 						// src, style
-						+ 'val = !val && val !== 0 ? "" : "" + val;'
+						+ 'val = val || val === 0 ? val : "";'
 						+ 'if(/[<&"]/.test(val)) { val = val.replace(/[<&"]/g,this._xmlEncoder); }'
 						+ "cb(" + JSON.stringify(' ' + name + '="')
 						+ " + val "
