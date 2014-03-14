@@ -348,4 +348,6 @@ TAssembly.prototype.compile = function(template, cb) {
 	return res;
 };
 
-module.exports = new TAssembly();
+module.exports = {
+	TAssembly: TAssembly
+}
