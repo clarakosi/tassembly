@@ -1,6 +1,7 @@
 {
 	"name": "tassembly",
+	"version": "0.1.0",
 	"dependencies": {
-		"domino": "~1.0.15"
+		"domino": "1.x.x"
 	}
 }
