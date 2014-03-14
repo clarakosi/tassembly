@@ -210,19 +210,42 @@ TAssembly.prototype._assemble = function(template, cb) {
 			code.push('cb(' + JSON.stringify(bit) + ');');
 		} else if (c === Array) {
 			// control structure
-			var fnName = bit[0];
+			var ctlFn = bit[0],
+				ctlOpts = bit[1];
 
 			// Inline text and attr handlers for speed
-			if (fnName === 'text') {
-				code.push('val = ' + evalExprStub(bit[1]) + ';'
+			if (ctlFn === 'text') {
+				code.push('val = ' + evalExprStub(ctlOpts) + ';'
 					+ 'val = !val && val !== 0 ? "" : "" + val;'
 					+ 'if(!/[<&]/.test(val)) { cb(val); }'
 					+ 'else { cb(val.replace(/[<&]/g,this._xmlEncoder)); };');
-			} else if ( fnName === 'attr' ) {
-				var names = Object.keys(bit[1]);
+			} else if ( ctlFn === 'attr' ) {
+				var names = Object.keys(ctlOpts);
 				for(var j = 0; j < names.length; j++) {
 					var name = names[j];
-					code.push('val = ' + evalExprStub(bit[1][name]) + ';');
+					if (typeof ctlOpts[name] === 'string') {
+						code.push('val = ' + evalExprStub(ctlOpts[name]) + ';');
+					} else {
+						// Must be an object
+						var attValObj = ctlOpts[name];
+						code.push('val=' + JSON.stringify(attValObj.v || ''));
+						if (attValObj.app && Array.isArray(attValObj.app)) {
+							attValObj.app.forEach(function(appItem) {
+								if (appItem['if']) {
+									code.push('if(' + evalExprStub(appItem['if']) + '){');
+									code.push('val += ' + JSON.stringify(appItem.v || '') + ';');
+									code.push('}');
+								} else if (appItem.ifnot) {
+									code.push('if(!' + evalExprStub(appItem['ifnot']) + '){');
+									code.push('val += ' + JSON.stringify(appItem.v || ''));
+									code.push('}');
+								}
+							});
+						}
+						if (attValObj.v === null) {
+							code.push('if(!val) { val = null; }');
+						}
+					}
 					code.push("if (val !== null) { "
 						// escape the attribute value
 						// TODO: hook up context-sensitive sanitization for href,
@@ -240,16 +263,16 @@ TAssembly.prototype._assemble = function(template, cb) {
 				// small, and b) share compilations of sub-blocks between
 				// repeated calls
 				var uid = this._getUID();
-				this.cache[uid] = bit[1];
+				this.cache[uid] = ctlOpts;
 
 				code.push('try {');
 				// call the method
-				code.push('this[' + JSON.stringify('ctlFn_' + bit[0])
+				code.push('this[' + JSON.stringify('ctlFn_' + ctlFn)
 						// store in cache / unique key rather than here
 						+ '](this.cache["' + uid + '"], scope, cb);');
 				code.push('} catch(e) {');
 				code.push("console.error('Unsupported control function:', "
-						+ JSON.stringify(bit[0]) + ", e.stack);");
+						+ JSON.stringify(ctlFn) + ", e.stack);");
 				code.push('}');
 			}
 		} else {
@@ -295,9 +318,10 @@ TAssembly.prototype.render = function(template, scope, cb) {
 			cb(bit);
 		} else if (c === Array) {
 			// control structure
-			var fnName = bit[0];
-			if (fnName === 'text') {
-				val = this._evalExpr(bit[1], scope);
+			var ctlFn = bit[0],
+				ctlOpts = bit[1];
+			if (ctlFn === 'text') {
+				val = this._evalExpr(ctlOpts, scope);
 				if (!val && val !== 0) {
 					val = '';
 				}
@@ -306,7 +330,7 @@ TAssembly.prototype.render = function(template, scope, cb) {
 			} else {
 
 				try {
-					self['ctlFn_' + bit[0]](bit[1], scope, cb);
+					self['ctlFn_' + ctlFn](ctlOpts, scope, cb);
 				} catch(e) {
 					console.error('Unsupported control function:', bit, e);
 				}
@@ -350,4 +374,4 @@ TAssembly.prototype.compile = function(template, cb) {
 
 module.exports = {
 	TAssembly: TAssembly
-}
+};
