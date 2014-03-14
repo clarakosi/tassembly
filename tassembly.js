@@ -35,9 +35,14 @@ TAssembly.prototype._getUID = function() {
 	return this.uid;
 };
 
+var simpleExpression = /^(?:[.][a-zA-Z_$]+)+$/,
+	complexExpression = new RegExp('^(?:[.][a-zA-Z_$]+'
+			+ '(?:\\[(?:[0-9.]+|["\'][a-zA-Z0-9_$]+["\'])\\])?'
+			+ '(?:\\((?:[0-9a-zA-Z_$.]+|["\'][a-zA-Z0-9_$\.]+["\'])\\))?'
+			+ ')+$');
 TAssembly.prototype._evalExpr = function (expression, scope) {
 	// Simple variable / fast path
-	if (/^[a-zA-Z_]+$/.test(expression)) {
+	if (/^[a-zA-Z_$]+$/.test(expression)) {
 		return scope[expression];
 	}
 
@@ -46,16 +51,23 @@ TAssembly.prototype._evalExpr = function (expression, scope) {
 		return expression.slice(1,-1).replace(/\\'/g, "'");
 	}
 
-	// Dot notation
-	// a.b
-	// a[1].b
-	// a()
-	// a.b[3]()
-	expression = '.' + expression;
-	if (/^(?:[.][a-zA-Z_](?:\[[a-zA-Z0-9_]+\])?(?:\( *\))?)+$/.test(expression)) {
+	// Dot notation, array indexing and function calls
+	// a.b.c
+	// literal array indexes (number and string) and nullary functions only
+	// a[1]().b['b']()
+	var texpression = '.' + expression;
+	if (simpleExpression.test(texpression)) {
 		try {
-			return new Function('scope', 'return scope' + expression)(scope);
+			return new Function('scope', 'with(scope) { return ' + expression + ')')(scope);
 		} catch (e) {
+			console.log(e);
+			return '';
+		}
+	} else if (complexExpression.test(texpression)) {
+		try {
+			return new Function('scope', 'with(scope) { return ' + expression + '}')(scope);
+		} catch (e) {
+			console.log(e);
 			return '';
 		}
 	}
@@ -75,7 +87,7 @@ TAssembly.prototype._evalExpr = function (expression, scope) {
  * and fall back to the full method otherwise.
  */
 function evalExprStub(expr) {
-	if (/^[a-zA-Z_]+$/.test(expr)) {
+	if (/^[a-zA-Z_$]+$/.test(expr)) {
 		// simple variable, the fast and common case
 		return 'scope[' + JSON.stringify(expr) + ']';
 	} else {
@@ -102,7 +114,17 @@ TAssembly.prototype.ctlFn_foreach = function(options, scope, cb) {
 		tpl = this.compile(this._getTemplate(options.tpl), cb),
 		l = iterable.length;
 	for(var i = 0; i < l; i++) {
-		tpl(iterable[i]);
+		var item = iterable[i];
+		if (!item || typeof item !== 'object') {
+			item = Object.create(null);
+			item.$data = iterable[i];
+		}
+		item.$index = i;
+		item['$parent'] = iterable;
+		tpl(item);
+		// tidy up
+		//delete item.$index;
+		//delete item.$parent;
 	}
 };
 TAssembly.prototype.ctlFn_template = function(options, scope, cb) {
