@@ -1,8 +1,5 @@
 {
 	"name": "tassembly",
 	"version": "0.1.0",
-	"main": "tassembly.js",
-	"dependencies": {
-		"domino": "1.x.x"
-	}
+	"main": "tassembly.js"
 }
