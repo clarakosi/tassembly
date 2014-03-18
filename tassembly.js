@@ -142,10 +142,10 @@ TAssembly.prototype.ctlFn_foreach = function(options, scope, cb) {
 };
 TAssembly.prototype.ctlFn_template = function(options, scope, cb) {
 	// deal with options
-	var newScope = {
-		$data: this._evalExpr(options.data, scope),
-		$parent: scope
-	};
+	var data = this._evalExpr(options.data, scope),
+		newScope = Object.create(data);
+	newScope.$data = data;
+	newScope.$parent = scope;
 	this.render(this._getTemplate(options.tpl), newScope, cb);
 };
 
