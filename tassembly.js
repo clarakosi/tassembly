@@ -39,15 +39,51 @@ var simpleExpression = /^(?:[.][a-zA-Z_$]+)+$/,
 	complexExpression = new RegExp('^(?:[.][a-zA-Z_$]+'
 			+ '(?:\\[(?:[0-9.]+|["\'][a-zA-Z0-9_$]+["\'])\\])?'
 			+ '(?:\\((?:[0-9a-zA-Z_$.]+|["\'][a-zA-Z0-9_$\\.]+["\'])\\))?'
-			+ ')+$');
+			+ ')+$'),
+	simpleBindingVar = /^(m|p|p[sc]?|rm|i|c)\.([a-zA-Z_$]+)$/;
+
+// Rewrite an expression so that it is referencing the context where necessary
+function rewriteExpression (expr) {
+	// Rewrite the expression to be keyed on the context 'c'
+	// XXX: experiment with some local var definitions and selective
+	// rewriting for perf
+
+	var res = '',
+		i = -1,
+		c = '';
+	do {
+		if (/^$|[{\[:(]/.test(c)) {
+			res += c;
+			if (/[pri]/.test(expr[i+1])) {
+				// Prefix with full context object; only the local view model
+				// 'm' and the context 'c' is defined locally for now
+				res += 'c.';
+			}
+		} else if (c === "'") {
+			// skip over string literal
+			var literal = expr.slice(i).match(/'(?:[^\\']+|\\')*'/);
+			if (literal) {
+				res += literal[0];
+				i += literal[0].length - 1;
+			}
+		} else {
+			res += c;
+		}
+		i++;
+		c = expr[i];
+	} while (c);
+	return res;
+}
+
 TAssembly.prototype._evalExpr = function (expression, scope) {
 	var func = this.cache['expr' + expression];
 	if (!func) {
-		if (/^\$(?:index|parent)$/.test(expression)) {
-			return scope[expression];
-		} else if (/^[a-zA-Z_$]+$/.test(expression)) {
-		// Simple variable, the fast and common case
-			return scope.$data[expression];
+
+		var simpleMatch = expression.match(simpleBindingVar);
+		if (simpleMatch) {
+			var scopeMember = simpleMatch[1],
+				key = simpleMatch[2];
+			return scope[scopeMember][key];
 		}
 
 		// String literal
@@ -55,21 +91,9 @@ TAssembly.prototype._evalExpr = function (expression, scope) {
 			return expression.slice(1,-1).replace(/\\'/g, "'");
 		}
 
-		// Dot notation, array indexing and function calls
-		// a.b.c
-		// literal array indexes (number and string) and nullary functions only
-		// a[1]().b['b']()
-		var texpression = '.' + expression;
-		if (simpleExpression.test(texpression) || complexExpression.test(texpression)) {
-			if (!/^(?:\$data|\$parent|\$index)/.test(expression)) {
-				expression = '$data.' + expression;
-			}
-			func = new Function('scope', 'var $index = scope.$index,'
-					+ '$data = scope.$data,'
-					+ '$parent = scope.$parent;'
-					+ 'return scope.' + expression);
-			this.cache['expr' + expression] = func;
-		}
+		func = new Function('c', 'var m = c.m;'
+				+ 'return ' + rewriteExpression(expression));
+		this.cache['expr' + expression] = func;
 	}
 	if (func) {
 		try {
@@ -95,20 +119,20 @@ TAssembly.prototype._evalExpr = function (expression, scope) {
  * and fall back to the full method otherwise.
  */
 function evalExprStub(expr) {
-	if (expr === '$data') {
-		return '$data';
-	} else if (/^$(?:index|parent)$/.test(expr)) {
-		return 'scope[' + JSON.stringify(expr) + ']';
-	} else if (/^[a-zA-Z_$]+$/.test(expr)) {
-		// Simple variable, the fast and common case
-		return '$data[' + JSON.stringify(expr) + ']';
-	} else if (/^'.*'$/.test(expr)) {
+	expr = '' + expr;
+	var newExpr;
+	if (simpleBindingVar.test(expr)) {
+		newExpr = rewriteExpression(expr);
+		return newExpr;
+	} else if (/^'/.test(expr)) {
 		// String literal
 		return JSON.stringify(expr.slice(1,-1).replace(/\\'/g, "'"));
 	} else {
-		return '(this.cache[' + JSON.stringify('expr' + expr) + '] ?'
-			+ 'this.cache[' + JSON.stringify('expr' + expr) + '](scope) :'
-			+ 'this._evalExpr(' + JSON.stringify(expr) + ', scope))';
+		newExpr = rewriteExpression(expr);
+		return '(function() { '
+			+ 'try {'
+			+ 'return ' + newExpr + ';'
+			+ '} catch (e) { console.error(e); return "";}})()';
 	}
 }
 
@@ -127,7 +151,7 @@ TAssembly.prototype._getTemplate = function (tpl, cb) {
 TAssembly.prototype.ctlFn_foreach = function(options, scope, cb) {
 	// deal with options
 	var iterable = this._evalExpr(options.data, scope);
-	if (!iterable || !Array.isArray(iterable)) { return }
+	if (!iterable || !Array.isArray(iterable)) { return; }
 		// worth compiling the nested template
 	var tpl = this.compile(this._getTemplate(options.tpl), cb),
 		l = iterable.length,
@@ -222,14 +246,41 @@ TAssembly.prototype._xmlEncoder = function(c){
 	}
 };
 
+TAssembly.prototype.Context = function(model, parentContext) {
+	this.m = model;
+	this.c = this;
+	if (parentContext) {
+		this.p = parentContext.m;
+		this.pc = parentContext;
+		this.ps = [model].concat(parentContext.ps);
+		this.rm = parentContext.rm;
+	} else {
+		this.ps = [model];
+		this.rm = model;
+	}
+}
+
+TAssembly.prototype.childContext = function (model, parCtx) {
+	return {
+		m: model,
+		p: parCtx.m,
+		ps: [model].concat(parCtx.ps),
+		rm: parCtx.rm
+	};
+};
+
 TAssembly.prototype._assemble = function(template, cb) {
 	var code = [];
+
 	code.push('var val;');
 	if (!cb) {
+		// top-level template: set up accumulator
 		code.push('var res = "", cb = function(bit) { res += bit; };');
-		code.push('var $data = scope;');
+		// and the top context
+		code.push('var m = c;');
+		code.push('c = { rm: m, m: m, ps: [c]};');
 	} else {
-		code.push('var $data = scope.$data;');
+		code.push('var m = c.m;');
 	}
 
 	var self = this,
@@ -248,7 +299,8 @@ TAssembly.prototype._assemble = function(template, cb) {
 			// Inline text and attr handlers for speed
 			if (ctlFn === 'text') {
 				code.push('val = ' + evalExprStub(ctlOpts) + ';'
-					+ 'val = !val && val !== 0 ? "" : "" + val;'
+					// convert val to string
+					+ 'val = val || val === 0 ? "" + val : "";'
 					+ 'if(!/[<&]/.test(val)) { cb(val); }'
 					+ 'else { cb(val.replace(/[<&]/g,this._xmlEncoder)); };');
 			} else if ( ctlFn === 'attr' ) {
@@ -282,9 +334,9 @@ TAssembly.prototype._assemble = function(template, cb) {
 						// escape the attribute value
 						// TODO: hook up context-sensitive sanitization for href,
 						// src, style
-						+ 'val || val === 0 ? val + "" : "";'
-						+ 'if(/[<&"]/.test(val)) { val = val.replace(/[<&"]/g,this._xmlEncoder); }'
-						+ "cb(" + JSON.stringify(' ' + name + '="')
+						+ '\nval = val || val === 0 ? "" + val : "";'
+						+ '\nif(/[<&"]/.test(val)) { val = val.replace(/[<&"]/g,this._xmlEncoder); }'
+						+ "\ncb(" + JSON.stringify(' ' + name + '="')
 						+ " + val "
 						+ "+ '\"');}");
 				}
@@ -298,15 +350,10 @@ TAssembly.prototype._assemble = function(template, cb) {
 				this.cache[uid] = ctlOpts;
 
 				code.push('try {');
-				// Create a proper scope if not defined yet
-				code.push('if(scope.$data === undefined) {');
-				code.push('var newScope = Object.create(scope);');
-				code.push('newScope.$data = scope;scope = newScope;');
-				code.push('}');
 				// call the method
 				code.push('this[' + JSON.stringify('ctlFn_' + ctlFn)
 						// store in cache / unique key rather than here
-						+ '](this.cache["' + uid + '"], scope, cb);');
+						+ '](this.cache["' + uid + '"], c, cb);');
 				code.push('} catch(e) {');
 				code.push("console.error('Unsupported control function:', "
 						+ JSON.stringify(ctlFn) + ", e.stack);");
@@ -326,19 +373,19 @@ TAssembly.prototype._assemble = function(template, cb) {
  * Interpreted template expansion entry point
  *
  * @param {array} template The tassembly template in JSON IR
- * @param {object} scope the model
+ * @param {object} c the model or context
  * @param {function} cb (optional) chunk callback for bits of text (instead of
  * return)
  * @return {string} Rendered template string
  */
-TAssembly.prototype.render = function(template, scope, cb) {
+TAssembly.prototype.render = function(template, c, cb) {
 	var res;
 	if (!cb) {
 		res = [];
 		cb = function(bit) {
 			res.push(bit);
 		};
-		// Wrap the scope
+		// Wrap the model in a context
 		var newScope = Object.create(scope);
 		newScope.$data = scope;
 		scope = newScope;
@@ -403,8 +450,8 @@ TAssembly.prototype.compile = function(template, cb) {
 		};
 	}
 	var code = this._assemble(template, cb);
-	//console.log(code);
-	var fn = new Function('scope', 'cb', code);
+	console.log(code);
+	var fn = new Function('c', 'cb', code);
 	template.__cachedFn = fn;
 	// bind this and cb
 	var res = function (scope) {
