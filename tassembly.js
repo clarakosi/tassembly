@@ -1,5 +1,5 @@
 /*
- * Prototype JSON template IR evaluator
+ * JSON template IR runtime
  *
  * Motto: Fast but safe!
  *
@@ -75,15 +75,15 @@ function rewriteExpression (expr) {
 	return res;
 }
 
-TAssembly.prototype._evalExpr = function (expression, scope) {
+TAssembly.prototype._evalExpr = function (expression, ctx) {
 	var func = this.cache['expr' + expression];
 	if (!func) {
 
 		var simpleMatch = expression.match(simpleBindingVar);
 		if (simpleMatch) {
-			var scopeMember = simpleMatch[1],
+			var ctxMember = simpleMatch[1],
 				key = simpleMatch[2];
-			return scope[scopeMember][key];
+			return ctx[ctxMember][key];
 		}
 
 		// String literal
@@ -97,7 +97,7 @@ TAssembly.prototype._evalExpr = function (expression, scope) {
 	}
 	if (func) {
 		try {
-			return func(scope);
+			return func(ctx);
 		}  catch (e) {
 			console.log(e);
 			return '';
@@ -115,7 +115,7 @@ TAssembly.prototype._evalExpr = function (expression, scope) {
 /*
  * Optimized _evalExpr stub for the code generator
  *
- * Directly dereference the scope for simple expressions (the common case),
+ * Directly dereference the ctx for simple expressions (the common case),
  * and fall back to the full method otherwise.
  */
 function evalExprStub(expr) {
@@ -148,71 +148,68 @@ TAssembly.prototype._getTemplate = function (tpl, cb) {
 	}
 };
 
-TAssembly.prototype.ctlFn_foreach = function(options, scope, cb) {
+TAssembly.prototype.ctlFn_foreach = function(options, ctx, cb) {
 	// deal with options
-	var iterable = this._evalExpr(options.data, scope);
+	var iterable = this._evalExpr(options.data, ctx);
 	if (!iterable || !Array.isArray(iterable)) { return; }
 		// worth compiling the nested template
 	var tpl = this.compile(this._getTemplate(options.tpl), cb),
 		l = iterable.length,
-		newScope = {
-			$parent: scope
-		};
+		newCtx = this.childContext(null, ctx);
 	for(var i = 0; i < l; i++) {
-		newScope.$data = iterable[i];
-		newScope.$index = i;
-		tpl(newScope);
+		// Update the view model for each iteration
+		newCtx.m = iterable[i];
+		newCtx.ps[0] = iterable[i];
+		// And set the iteration index
+		newCtx.i = i;
+		tpl(newCtx);
 	}
 };
-TAssembly.prototype.ctlFn_template = function(options, scope, cb) {
+TAssembly.prototype.ctlFn_template = function(options, ctx, cb) {
 	// deal with options
-	var data = this._evalExpr(options.data, scope),
-		newScope = Object.create(data);
-	newScope.$data = data;
-	newScope.$parent = scope;
-	this.render(this._getTemplate(options.tpl), newScope, cb);
+	var model = this._evalExpr(options.data, ctx),
+		newCtx = this.childContext(model, ctx);
+	this.render(this._getTemplate(options.tpl), newCtx, cb);
 };
 
-TAssembly.prototype.ctlFn_with = function(options, scope, cb) {
-	var data = this._evalExpr(options.data, scope),
-		newScope = Object.create(data);
-	newScope.$parent = scope;
-	newScope.$data = data;
-	if (newScope.$data) {
-		this.render(this._getTemplate(options.tpl), newScope, cb);
+TAssembly.prototype.ctlFn_with = function(options, ctx, cb) {
+	var model = this._evalExpr(options.data, ctx),
+		newCtx = this.childContext(model, ctx);
+	if (model) {
+		this.render(this._getTemplate(options.tpl), newCtx, cb);
 	} else {
 		// TODO: hide the parent element similar to visible
 	}
 };
 
-TAssembly.prototype.ctlFn_if = function(options, scope, cb) {
-	if (this._evalExpr(options.data, scope)) {
-		this.render(options.tpl, scope, cb);
+TAssembly.prototype.ctlFn_if = function(options, ctx, cb) {
+	if (this._evalExpr(options.data, ctx)) {
+		this.render(options.tpl, ctx, cb);
 	}
 };
 
-TAssembly.prototype.ctlFn_ifnot = function(options, scope, cb) {
-	if (!this._evalExpr(options.data, scope)) {
-		this.render(options.tpl, scope, cb);
+TAssembly.prototype.ctlFn_ifnot = function(options, ctx, cb) {
+	if (!this._evalExpr(options.data, ctx)) {
+		this.render(options.tpl, ctx, cb);
 	}
 };
 
-TAssembly.prototype.ctlFn_attr = function(options, scope, cb) {
+TAssembly.prototype.ctlFn_attr = function(options, ctx, cb) {
 	var self = this,
 		attVal;
 	Object.keys(options).forEach(function(name) {
 		var attValObj = options[name];
 		if (typeof attValObj === 'string') {
-			attVal = self._evalExpr(options[name], scope);
+			attVal = self._evalExpr(options[name], ctx);
 		} else {
 			// Must be an object
 			attVal = attValObj.v || '';
 			if (attValObj.app && Array.isArray(attValObj.app)) {
 				attValObj.app.forEach(function(appItem) {
-					if (appItem['if'] && self._evalExpr(appItem['if'], scope)) {
+					if (appItem['if'] && self._evalExpr(appItem['if'], ctx)) {
 						attVal += appItem.v || '';
 					}
-					if (appItem.ifnot && ! self._evalExpr(appItem.ifnot, scope)) {
+					if (appItem.ifnot && ! self._evalExpr(appItem.ifnot, ctx)) {
 						attVal += appItem.v || '';
 					}
 				});
@@ -232,8 +229,8 @@ TAssembly.prototype.ctlFn_attr = function(options, scope, cb) {
 };
 
 // Actually handled inline for performance
-//TAssembly.prototype.ctlFn_text = function(options, scope, cb) {
-//	cb(this._evalExpr(options, scope));
+//TAssembly.prototype.ctlFn_text = function(options, ctx, cb) {
+//	cb(this._evalExpr(options, ctx));
 //};
 
 TAssembly.prototype._xmlEncoder = function(c){
@@ -250,9 +247,9 @@ TAssembly.prototype.Context = function(model, parentContext) {
 	this.m = model;
 	this.c = this;
 	if (parentContext) {
+		this.ps = [model].concat(parentContext.ps);
 		this.p = parentContext.m;
 		this.pc = parentContext;
-		this.ps = [model].concat(parentContext.ps);
 		this.rm = parentContext.rm;
 	} else {
 		this.ps = [model];
@@ -378,22 +375,22 @@ TAssembly.prototype._assemble = function(template, cb) {
  * return)
  * @return {string} Rendered template string
  */
-TAssembly.prototype.render = function(template, c, cb) {
-	var res;
+TAssembly.prototype.render = function(template, ctx_or_model, cb) {
+	var res, ctx;
 	if (!cb) {
 		res = [];
 		cb = function(bit) {
 			res.push(bit);
 		};
-		// Wrap the model in a context
-		var newScope = Object.create(scope);
-		newScope.$data = scope;
-		scope = newScope;
+		// c is really the model. Wrap it into a context.
+		ctx = { rm: m, m: m, ps: [c]};
+	} else {
+		ctx = ctx_or_model;
 	}
 
 	// Just call a cached compiled version if available
 	if (template.__cachedFn) {
-		return template.__cachedFn.call(this, scope, cb);
+		return template.__cachedFn.call(this, ctx, cb);
 	}
 
 	var self = this,
@@ -409,7 +406,7 @@ TAssembly.prototype.render = function(template, c, cb) {
 			var ctlFn = bit[0],
 				ctlOpts = bit[1];
 			if (ctlFn === 'text') {
-				val = this._evalExpr(ctlOpts, scope);
+				val = this._evalExpr(ctlOpts, ctx);
 				if (!val && val !== 0) {
 					val = '';
 				}
@@ -418,7 +415,7 @@ TAssembly.prototype.render = function(template, c, cb) {
 			} else {
 
 				try {
-					self['ctlFn_' + ctlFn](ctlOpts, scope, cb);
+					self['ctlFn_' + ctlFn](ctlOpts, ctx, cb);
 				} catch(e) {
 					console.error('Unsupported control function:', bit, e);
 				}
@@ -445,8 +442,8 @@ TAssembly.prototype.compile = function(template, cb) {
 	var self = this;
 	if (template.__cachedFn) {
 		//
-		return function(scope) {
-			return template.__cachedFn.call(self, scope, cb);
+		return function(ctx) {
+			return template.__cachedFn.call(self, ctx, cb);
 		};
 	}
 	var code = this._assemble(template, cb);
@@ -454,8 +451,8 @@ TAssembly.prototype.compile = function(template, cb) {
 	var fn = new Function('c', 'cb', code);
 	template.__cachedFn = fn;
 	// bind this and cb
-	var res = function (scope) {
-		return fn.call(self, scope, cb);
+	var res = function (ctx) {
+		return fn.call(self, ctx, cb);
 	};
 	return res;
 };
