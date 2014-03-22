@@ -142,7 +142,7 @@ TAssembly.prototype._getTemplate = function (tpl, cb) {
 		return tpl;
 	} else {
 		// String literal: strip quotes
-		if (/^'.*'$/.test(tpl)) {
+		if (/^'/.test(tpl)) {
 			tpl = tpl.slice(1,-1).replace(/\\'/g, "'");
 		}
 		return this.partials[tpl];
@@ -169,15 +169,19 @@ TAssembly.prototype.ctlFn_foreach = function(options, ctx, cb) {
 TAssembly.prototype.ctlFn_template = function(options, ctx, cb) {
 	// deal with options
 	var model = this._evalExpr(options.data, ctx),
-		newCtx = this.childContext(model, ctx);
-	this.render(this._getTemplate(options.tpl), newCtx, cb);
+		newCtx = this.childContext(model, ctx),
+		tpl = this._getTemplate(options.tpl);
+	if (tpl) {
+		this.render(tpl, newCtx, cb);
+	}
 };
 
 TAssembly.prototype.ctlFn_with = function(options, ctx, cb) {
 	var model = this._evalExpr(options.data, ctx),
-		newCtx = this.childContext(model, ctx);
-	if (model) {
-		this.render(this._getTemplate(options.tpl), newCtx, cb);
+		tpl = this._getTemplate(options.tpl);
+	if (model && tpl) {
+		var newCtx = this.childContext(model, ctx);
+		this.render(tpl, newCtx, cb);
 	} else {
 		// TODO: hide the parent element similar to visible
 	}
@@ -256,7 +260,7 @@ TAssembly.prototype.Context = function(model, parentContext) {
 		this.ps = [model];
 		this.rm = model;
 	}
-}
+};
 
 TAssembly.prototype.childContext = function (model, parCtx) {
 	return {
@@ -384,7 +388,7 @@ TAssembly.prototype.render = function(template, ctx_or_model, cb) {
 			res.push(bit);
 		};
 		// c is really the model. Wrap it into a context.
-		ctx = { rm: m, m: m, ps: [c]};
+		ctx = { rm: ctx_or_model, m: ctx_or_model, ps: [ctx_or_model]};
 	} else {
 		ctx = ctx_or_model;
 	}
