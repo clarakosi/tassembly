@@ -52,9 +52,10 @@ function rewriteExpression (expr) {
 		i = -1,
 		c = '';
 	do {
-		if (/^$|[{\[:(]/.test(c)) {
+		if (/^$|[\[:(]/.test(c)) {
 			res += c;
-			if (/[pri]/.test(expr[i+1])) {
+			if (/[pri]/.test(expr[i+1])
+				&& /(?:p[sc]?|rm|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
 				// Prefix with full context object; only the local view model
 				// 'm' and the context 'c' is defined locally for now
 				res += 'c.';
@@ -447,7 +448,7 @@ TAssembly.prototype.compile = function(template, cb) {
 		};
 	}
 	var code = this._assemble(template, cb);
-	console.log(code);
+	//console.log(code);
 	var fn = new Function('c', 'cb', code);
 	template.__cachedFn = fn;
 	// bind this and cb
