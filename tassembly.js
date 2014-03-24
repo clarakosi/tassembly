@@ -261,20 +261,7 @@ TAssembly.prototype._xmlEncoder = function(c){
 	}
 };
 
-TAssembly.prototype.Context = function(model, parentContext) {
-	this.m = model;
-	this.c = this;
-	if (parentContext) {
-		this.ps = [model].concat(parentContext.ps);
-		this.p = parentContext.m;
-		this.pc = parentContext;
-		this.rm = parentContext.rm;
-	} else {
-		this.ps = [model];
-		this.rm = model;
-	}
-};
-
+// Create a child context using plain old objects
 TAssembly.prototype.childContext = function (model, parCtx) {
 	return {
 		m: model,
