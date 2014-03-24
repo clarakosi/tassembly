@@ -20,6 +20,7 @@
  */
 "use strict";
 
+var attrSanitizer = new (require('./AttributeSanitizer.js').AttributeSanitizer)();
 
 function TAssembly () {
 	this.uid = 0;
@@ -29,6 +30,8 @@ function TAssembly () {
 	// Partials: tassembly objects
 	this.partials = {};
 }
+
+TAssembly.prototype.attrSanitizer = attrSanitizer;
 
 TAssembly.prototype._getUID = function() {
 	this.uid++;
@@ -227,6 +230,13 @@ TAssembly.prototype.ctlFn_attr = function(options, ctx, cb) {
 			}
 		}
 		if (attVal !== null) {
+			if (name === 'href' || name === 'src') {
+				attVal = this.attrSanitizer.sanitizeHref(attVal);
+			} else if (name === 'style') {
+				attVal = this.attrSanitizer.sanitizeStyle(attVal);
+			}
+		}
+		if (attVal !== null) {
 			cb(' ' + name + '="'
 				// TODO: context-sensitive sanitization on href / src / style
 				// (also in compiled version at end)
@@ -343,6 +353,16 @@ TAssembly.prototype._assemble = function(template, cb) {
 						if (attValObj.v === null) {
 							code.push('if(!val) { val = null; }');
 						}
+					}
+					// attribute sanitization
+					if (name === 'href' || name === 'src') {
+						code.push("if (val !== null) {"
+								+ "val = this.attrSanitizer.sanitizeHref(val);"
+								+ "}");
+					} else if (name === 'style') {
+						code.push("if (val !== null) {"
+								+ "val = this.attrSanitizer.sanitizeStyle(val);"
+								+ "}");
 					}
 					pushCode("if (val !== null) { "
 						// escape the attribute value
