@@ -267,7 +267,8 @@ TAssembly.prototype.childContext = function (model, parCtx) {
 		m: model,
 		p: parCtx.m,
 		ps: [model].concat(parCtx.ps),
-		rm: parCtx.rm
+		rm: parCtx.rm,
+		rc: parCtx.rc // the root context
 	};
 };
 
@@ -289,7 +290,7 @@ TAssembly.prototype._assemble = function(template, cb) {
 		code.push('var res = "", cb = function(bit) { res += bit; };');
 		// and the top context
 		code.push('var m = c;');
-		code.push('c = { rm: m, m: m, ps: [c]};');
+		code.push('c = { rc: null, rm: m, m: m, ps: [m], g: this.globals}; c.rc = c; ');
 	} else {
 		code.push('var m = c.m;');
 	}
@@ -410,7 +411,14 @@ TAssembly.prototype.render = function(template, ctx_or_model, cb) {
 			res.push(bit);
 		};
 		// c is really the model. Wrap it into a context.
-		ctx = { rm: ctx_or_model, m: ctx_or_model, ps: [ctx_or_model]};
+		ctx = {
+			rm: ctx_or_model,
+			m: ctx_or_model,
+			ps: [ctx_or_model],
+			rc: null,
+			g: this.globals
+		};
+		ctx.rc = ctx;
 	} else {
 		ctx = ctx_or_model;
 	}
