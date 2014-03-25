@@ -16,7 +16,8 @@ var protocolRegex = new RegExp( '^(' + [
       "git://",
       "mms://",
       "//"
-    ].join('|') + ')', 'i');
+    ].join('|') + ')', 'i'),
+	CHAR_REFS_RE = /&([A-Za-z0-9\x80-\xff]+);|&\#([0-9]+);|&\#[xX]([0-9A-Fa-f]+);|(&)/;
 
 function AttributeSanitizer(options) {
 	// XXX: make protocol regexp configurable!
@@ -29,7 +30,7 @@ function AttributeSanitizer(options) {
  */
 AttributeSanitizer.prototype.decodeCharReferences = function ( text ) {
 	var sanitizer = this;
-	return text.replace(sanitizer.constants.CHAR_REFS_RE, function() {
+	return text.replace(CHAR_REFS_RE, function() {
 		if (arguments[1]) {
 			return sanitizer.decodeEntity(arguments[1]);
 		} else if (arguments[2]) {
