@@ -58,7 +58,7 @@ function rewriteExpression (expr) {
 		if (/^$|[\[:(]/.test(c)) {
 			res += c;
 			if (/[pri]/.test(expr[i+1])
-				&& /(?:p[sc]?|rm|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
+				&& /(?:p[scm]|rm|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
 				// Prefix with full context object; only the local view model
 				// 'm' and the context 'c' is defined locally for now
 				res += 'c.';
@@ -265,7 +265,8 @@ TAssembly.prototype._xmlEncoder = function(c){
 TAssembly.prototype.childContext = function (model, parCtx) {
 	return {
 		m: model,
-		p: parCtx.m,
+		pc: parCtx,
+		pm: parCtx.m,
 		ps: [model].concat(parCtx.ps),
 		rm: parCtx.rm,
 		rc: parCtx.rc // the root context
