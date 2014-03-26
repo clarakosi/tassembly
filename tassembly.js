@@ -58,7 +58,7 @@ function rewriteExpression (expr) {
 		if (/^$|[\[:(]/.test(c)) {
 			res += c;
 			if (/[pri]/.test(expr[i+1])
-				&& /(?:p[scm]|rm|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
+				&& /(?:p[scm]s?|rm|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
 				// Prefix with full context object; only the local view model
 				// 'm' and the context 'c' is defined locally for now
 				res += 'c.';
@@ -267,7 +267,7 @@ TAssembly.prototype.childContext = function (model, parCtx) {
 		m: model,
 		pc: parCtx,
 		pm: parCtx.m,
-		ps: [model].concat(parCtx.ps),
+		pms: [model].concat(parCtx.ps),
 		rm: parCtx.rm,
 		rc: parCtx.rc // the root context
 	};
@@ -291,7 +291,7 @@ TAssembly.prototype._assemble = function(template, cb) {
 		code.push('var res = "", cb = function(bit) { res += bit; };');
 		// and the top context
 		code.push('var m = c;');
-		code.push('c = { rc: null, rm: m, m: m, ps: [m], g: this.globals}; c.rc = c; ');
+		code.push('c = { rc: null, rm: m, m: m, pms: [m], g: this.globals}; c.rc = c; ');
 	} else {
 		code.push('var m = c.m;');
 	}
@@ -415,7 +415,7 @@ TAssembly.prototype.render = function(template, ctx_or_model, cb) {
 		ctx = {
 			rm: ctx_or_model,
 			m: ctx_or_model,
-			ps: [ctx_or_model],
+			pms: [ctx_or_model],
 			rc: null,
 			g: this.globals
 		};
