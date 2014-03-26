@@ -43,7 +43,7 @@ var simpleExpression = /^(?:[.][a-zA-Z_$]+)+$/,
 			+ '(?:\\[(?:[0-9.]+|["\'][a-zA-Z0-9_$]+["\'])\\])?'
 			+ '(?:\\((?:[0-9a-zA-Z_$.]+|["\'][a-zA-Z0-9_$\\.]+["\'])\\))?'
 			+ ')+$'),
-	simpleBindingVar = /^(m|p|p[sc]?|rm|i|c)\.([a-zA-Z_$]+)$/;
+	simpleBindingVar = /^(m|p(?:[cm]s?)?|rm|i|c)\.([a-zA-Z_$]+)$/;
 
 // Rewrite an expression so that it is referencing the context where necessary
 function rewriteExpression (expr) {
@@ -58,7 +58,7 @@ function rewriteExpression (expr) {
 		if (/^$|[\[:(]/.test(c)) {
 			res += c;
 			if (/[pri]/.test(expr[i+1])
-				&& /(?:p[scm]s?|rm|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
+				&& /(?:p(?:[cm]s?)?|rm|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
 				// Prefix with full context object; only the local view model
 				// 'm' and the context 'c' is defined locally for now
 				res += 'c.';
@@ -166,7 +166,7 @@ TAssembly.prototype.ctlFn_foreach = function(options, ctx, cb) {
 	for(var i = 0; i < l; i++) {
 		// Update the view model for each iteration
 		newCtx.m = iterable[i];
-		newCtx.ps[0] = iterable[i];
+		newCtx.pms[0] = iterable[i];
 		// And set the iteration index
 		newCtx.i = i;
 		tpl(newCtx);
