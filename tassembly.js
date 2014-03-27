@@ -143,7 +143,7 @@ function evalExprStub(expr) {
 	}
 }
 
-TAssembly.prototype._getTemplate = function (tpl, cb) {
+TAssembly.prototype._getTemplate = function (tpl, ctx) {
 	if (Array.isArray(tpl)) {
 		return tpl;
 	} else {
@@ -160,7 +160,7 @@ TAssembly.prototype.ctlFn_foreach = function(options, ctx) {
 	var iterable = this._evalExpr(options.data, ctx);
 	if (!iterable || !Array.isArray(iterable)) { return; }
 		// worth compiling the nested template
-	var tpl = this._compile(this._getTemplate(options.tpl), ctx),
+	var tpl = this.compile(this._getTemplate(options.tpl), ctx),
 		l = iterable.length,
 		newCtx = this.childContext(null, ctx);
 	for(var i = 0; i < l; i++) {
@@ -172,6 +172,7 @@ TAssembly.prototype.ctlFn_foreach = function(options, ctx) {
 		tpl(newCtx);
 	}
 };
+
 TAssembly.prototype.ctlFn_template = function(options, ctx) {
 	// deal with options
 	var model = this._evalExpr(options.data, ctx),
@@ -199,13 +200,13 @@ TAssembly.prototype.ctlFn_if = function(options, ctx) {
 	}
 };
 
-TAssembly.prototype.ctlFn_ifnot = function(options, ctx, cb) {
+TAssembly.prototype.ctlFn_ifnot = function(options, ctx) {
 	if (!this._evalExpr(options.data, ctx)) {
-		this._render(options.tpl, ctx, cb);
+		this._render(options.tpl, ctx);
 	}
 };
 
-TAssembly.prototype.ctlFn_attr = function(options, ctx, cb) {
+TAssembly.prototype.ctlFn_attr = function(options, ctx) {
 	var self = this,
 		attVal;
 	Object.keys(options).forEach(function(name) {
@@ -247,7 +248,7 @@ TAssembly.prototype.ctlFn_attr = function(options, ctx, cb) {
 };
 
 // Actually handled inline for performance
-//TAssembly.prototype.ctlFn_text = function(options, ctx, cb) {
+//TAssembly.prototype.ctlFn_text = function(options, ctx) {
 //	cb(this._evalExpr(options, ctx));
 //};
 
@@ -274,7 +275,7 @@ TAssembly.prototype.childContext = function (model, parCtx) {
 	};
 };
 
-TAssembly.prototype._assemble = function(template, ctx) {
+TAssembly.prototype._assemble = function(template, options) {
 	var code = [],
 		cbExpr = [];
 
@@ -286,7 +287,7 @@ TAssembly.prototype._assemble = function(template, ctx) {
 		code.push(codeChunk);
 	}
 
-	code.push('var m = c.m, cb = c.cb, val;');
+	code.push('var val;');
 
 	var self = this,
 		l = template.length;
@@ -368,7 +369,7 @@ TAssembly.prototype._assemble = function(template, ctx) {
 				// call the method
 				code.push('this[' + JSON.stringify('ctlFn_' + ctlFn)
 						// store in cache / unique key rather than here
-						+ '](this.cache["' + uid + '"], c, cb);');
+						+ '](this.cache["' + uid + '"], c);');
 				code.push('} catch(e) {');
 				code.push("console.error('Unsupported control function:', "
 						+ JSON.stringify(ctlFn) + ", e.stack);");
@@ -394,12 +395,6 @@ TAssembly.prototype._assemble = function(template, ctx) {
  */
 TAssembly.prototype.render = function(template, model, options) {
 	if (!options) { options = {}; }
-	var res = '';
-	if (!options.cb) {
-		options.cb = function(bit) {
-			res += bit;
-		};
-	}
 
 	// Create the root context
 	var ctx = {
@@ -412,7 +407,16 @@ TAssembly.prototype.render = function(template, model, options) {
 		options: options
 	};
 	ctx.rc = ctx;
+
+	var res = '';
+	if (!options.cb) {
+		ctx.cb = function(bit) {
+			res += bit;
+		};
+	}
+
 	this._render(template, ctx);
+
 	if (!options.cb) {
 		return res;
 	}
@@ -421,12 +425,12 @@ TAssembly.prototype.render = function(template, model, options) {
 TAssembly.prototype._render = function (template, ctx) {
 	// Just call a cached compiled version if available
 	if (template.__cachedFn) {
-		return template.__cachedFn.call(this, ctx);
+		return template.__cachedFn(ctx);
 	}
 
 	var self = this,
 		l = template.length,
-		cb = ctx.rc.cb;
+		cb = ctx.cb;
 	for(var i = 0; i < l; i++) {
 		var bit = template[i],
 			c = bit.constructor,
@@ -447,7 +451,7 @@ TAssembly.prototype._render = function (template, ctx) {
 			} else {
 
 				try {
-					self['ctlFn_' + ctlFn](ctlOpts, ctx, cb);
+					self['ctlFn_' + ctlFn](ctlOpts, ctx);
 				} catch(e) {
 					console.error('Unsupported control function:', bit, e);
 				}
@@ -468,42 +472,37 @@ TAssembly.prototype._render = function (template, ctx) {
  * @return {function} template function(model)
  */
 TAssembly.prototype.compile = function(template, options) {
-	return this._compile(template, null, options);
-};
-
-TAssembly.prototype._compile = function(template, ctx, options) {
-	var self = this;
-	if (!template.__cachedFn) {
-		var code = this._assemble(template, ctx || options || {});
-		//console.log(code);
-		var fn = new Function('c', code);
-		if (ctx === null) {
-			if (!options) {
-				options = {};
-			}
-			template.__cachedFn = function(model) {
-				// Create the root context
-				var c = {
-					rm: model,
-					m: model,
-					pms: [model],
-					rc: null,
-					g: options.globals,
-					options: options
-				};
-				c.rc = c;
-				var res = '';
-				c.cb = function(bit) { res += bit; };
-				fn.call(self, c);
-				return res;
-			};
-		} else {
-			template.__cachedFn = function(ctx) {
-				fn.call(self, ctx);
-			};
-		}
+	var self = this, opts = options || {};
+	if (template.__cachedFn) {
+		return template.__cachedFn;
 	}
-	return template.__cachedFn;
+
+	var code = '';
+	if (!opts.cb) {
+		// top-level template: set up accumulator
+		code += 'var res = "", cb = function(bit) { res += bit; };\n';
+		// and the top context
+		code += 'var m = c;\n';
+		code += 'c = { rc: null, rm: m, m: m, pms: [m], g: c.globals, cb: cb}; c.rc = c;\n';
+	} else {
+		code += 'var m = c.m, cb = c.cb;\n';
+	}
+
+	code += this._assemble(template, opts);
+
+	if (!opts.cb) {
+		code += 'return res;';
+	}
+
+	//console.log(code);
+
+	var fn = new Function('c', code),
+		boundFn = function(ctx) {
+			return fn.call(self, ctx);
+		};
+	template.__cachedFn = boundFn;
+
+	return boundFn;
 };
 
 module.exports = {
