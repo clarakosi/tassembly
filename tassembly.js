@@ -339,15 +339,15 @@ TAssembly.prototype._assemble = function(template, options) {
 					}
 					// attribute sanitization
 					if (name === 'href' || name === 'src') {
-						code.push("if (val !== null) {"
+						code.push("if (val) {"
 								+ "val = this.attrSanitizer.sanitizeHref(val);"
 								+ "}");
 					} else if (name === 'style') {
-						code.push("if (val !== null) {"
+						code.push("if (val) {"
 								+ "val = this.attrSanitizer.sanitizeStyle(val);"
 								+ "}");
 					}
-					pushCode("if (val !== null) { "
+					pushCode("if (val || val === 0 || val === '') { "
 						// escape the attribute value
 						// TODO: hook up context-sensitive sanitization for href,
 						// src, style
