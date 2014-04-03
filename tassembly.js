@@ -230,14 +230,15 @@ TAssembly.prototype.ctlFn_attr = function(options, ctx) {
 				attVal = null;
 			}
 		}
-		if (attVal !== null) {
+		if (attVal) {
 			if (name === 'href' || name === 'src') {
 				attVal = this.attrSanitizer.sanitizeHref(attVal);
 			} else if (name === 'style') {
 				attVal = this.attrSanitizer.sanitizeStyle(attVal);
 			}
 		}
-		if (attVal !== null) {
+		// Omit attributes if they are undefined, null or false
+		if (attVal || attVal === 0 || attVal === '') {
 			cb(' ' + name + '="'
 				// TODO: context-sensitive sanitization on href / src / style
 				// (also in compiled version at end)
