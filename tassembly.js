@@ -43,7 +43,7 @@ var simpleExpression = /^(?:[.][a-zA-Z_$]+)+$/,
 			+ '(?:\\[(?:[0-9.]+|["\'][a-zA-Z0-9_$]+["\'])\\])?'
 			+ '(?:\\((?:[0-9a-zA-Z_$.]+|["\'][a-zA-Z0-9_$\\.]+["\'])\\))?'
 			+ ')+$'),
-	simpleBindingVar = /^(m|p(?:[cm]s?)?|rm|i|c)\.([a-zA-Z_$]+)$/;
+	simpleBindingVar = /^(m|p(?:[cm]s?)?|r[mc]|i|c)\.([a-zA-Z_$]+)$/;
 
 // Rewrite an expression so that it is referencing the context where necessary
 function rewriteExpression (expr) {
@@ -58,7 +58,7 @@ function rewriteExpression (expr) {
 		if (/^$|[\[:(]/.test(c)) {
 			res += c;
 			if (/[pri]/.test(expr[i+1])
-				&& /(?:p(?:[cm]s?)?|rm|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
+				&& /(?:p(?:[cm]s?)?|r[mc]|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
 				// Prefix with full context object; only the local view model
 				// 'm' and the context 'c' is defined locally for now
 				res += 'c.';
@@ -151,7 +151,7 @@ TAssembly.prototype._getTemplate = function (tpl, ctx) {
 		if (/^'/.test(tpl)) {
 			tpl = tpl.slice(1,-1).replace(/\\'/g, "'");
 		}
-		return this.partials[tpl];
+		return ctx.rc.options.partials[tpl];
 	}
 };
 
@@ -177,7 +177,7 @@ TAssembly.prototype.ctlFn_template = function(options, ctx) {
 	// deal with options
 	var model = this._evalExpr(options.data, ctx),
 		newCtx = this.childContext(model, ctx),
-		tpl = this._getTemplate(options.tpl);
+		tpl = this._getTemplate(options.tpl, ctx);
 	if (tpl) {
 		this._render(tpl, newCtx);
 	}
@@ -185,7 +185,7 @@ TAssembly.prototype.ctlFn_template = function(options, ctx) {
 
 TAssembly.prototype.ctlFn_with = function(options, ctx) {
 	var model = this._evalExpr(options.data, ctx),
-		tpl = this._getTemplate(options.tpl);
+		tpl = this._getTemplate(options.tpl, ctx);
 	if (model && tpl) {
 		var newCtx = this.childContext(model, ctx);
 		this._render(tpl, newCtx);
@@ -239,7 +239,7 @@ TAssembly.prototype.ctlFn_attr = function(options, ctx) {
 		}
 		// Omit attributes if they are undefined, null or false
 		if (attVal || attVal === 0 || attVal === '') {
-			cb(' ' + name + '="'
+			ctx.cb(' ' + name + '="'
 				// TODO: context-sensitive sanitization on href / src / style
 				// (also in compiled version at end)
 				+ attVal.toString().replace(/"/g, '&quot;')
@@ -484,7 +484,8 @@ TAssembly.prototype.compile = function(template, options) {
 		code += 'var res = "", cb = function(bit) { res += bit; };\n';
 		// and the top context
 		code += 'var m = c;\n';
-		code += 'c = { rc: null, rm: m, m: m, pms: [m], g: c.globals, cb: cb}; c.rc = c;\n';
+		code += 'c = { rc: null, rm: m, m: m, pms: [m], '
+			+ 'g: options.globals, options: options, cb: cb }; c.rc = c;\n';
 	} else {
 		code += 'var m = c.m, cb = c.cb;\n';
 	}
@@ -497,15 +498,14 @@ TAssembly.prototype.compile = function(template, options) {
 
 	//console.log(code);
 
-	var fn = new Function('c', code),
+	var fn = new Function('c', 'options', code),
 		boundFn = function(ctx) {
-			return fn.call(self, ctx);
+			return fn.call(self, ctx, opts);
 		};
 	template.__cachedFn = boundFn;
 
 	return boundFn;
 };
 
-module.exports = {
-	TAssembly: TAssembly
-};
+// TODO: cut down interface further as it's all static now
+module.exports = new TAssembly();
