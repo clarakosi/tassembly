@@ -170,10 +170,10 @@ In this case, the style attribute will have the values "color:red;" or
 Model access and expressions
 ----------------------------
 * Literals: 
-** Number "2" or "3.4"
-** String "'Some string literal'" (note single quotes); single quotes escaped
-with "\'" & backslashes escaped as "\\"
-** Object "{foo:'bar',baz:m.someVar}"
+  * Number "2" or "3.4"
+  * String "'Some string literal'" (note single quotes); single quotes escaped
+    with "\'" & backslashes escaped as "\\"
+  * Object "{foo:'bar',baz:m.someVar}"
 * Variable access with dot notation: 'm.foo.bar'
 * Array references: "m.users[m.user]"
 * Function calls: "rc.g.i18n('username',{foo:m.bar})"; nesting and multiple
