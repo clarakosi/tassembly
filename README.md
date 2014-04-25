@@ -181,12 +181,12 @@ Model access and expressions
 
 Expressions have access to a handful of variables defined in the current
 context:
-* 'm': The current view model (Knockout: '$data')
-* 'rm': The root (topmost) view model (Knockout: '$root')
-* 'pm': The parent view model (Knockout: '$parent')
-* 'pms': Array of parent view models (Knockout: '$parents')
-* 'pc': The parent context object (Knockout: '$parentContext')
-* 'i': Current iteration index in foreach (Knockout: '$index')
-* 'rc': Root context object
-* 'rc.g': Globals defined at compile time; typically used for helper functions
-  that should not be part of the model (i18n etc)
+* m - current view model (Knockout: '$data')
+* rm - root (topmost) view model (Knockout: '$root')
+* pm - parent view model (Knockout: '$parent')
+* pms - array of parent view models (Knockout: '$parents')
+* pc - parent context object (Knockout: '$parentContext')
+* i - current iteration index in foreach (Knockout: '$index')
+* rc - root context object
+* rc.g - globals defined at compile time; typically used for helper functions
+  which should not be part of the model (i18n etc)
