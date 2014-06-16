@@ -1,5 +1,11 @@
 {
 	"name": "tassembly",
-	"version": "0.1.0",
-	"main": "tassembly.js"
+	"version": "0.1.1",
+	"main": "tassembly.js",
+	"devDependencies": {
+		"browserify": "*"
+	},
+	"scripts": {
+		"prepublish": "browserify -s tassembly tassembly.js > browser/tassembly.orig.js && [ -x /usr/bin/closure-compiler ] && closure-compiler browser/tassembly.orig.js > browser/tassembly.js"
+	}
 }
