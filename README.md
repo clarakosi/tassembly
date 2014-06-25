@@ -1,7 +1,9 @@
 TAssembly
 =========
 
-JSON IR for templating and corresponding runtime implementation
+JSON
+[IR](https://en.wikipedia.org/wiki/Intermediate_language#Intermediate_representation)
+for templating and corresponding runtime implementation
 
 **"Fast but safe"**
 
