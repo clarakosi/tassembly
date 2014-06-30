@@ -65,6 +65,11 @@ var model = {
 var html = tplFun(model);
 ```
 
+Optionally, you can also override options at render time:
+
+```javascript
+var html = tplFun(model, options);
+```
 
 TAssembly spec
 ==============
