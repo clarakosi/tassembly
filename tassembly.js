@@ -304,8 +304,11 @@ TAssembly.prototype._assemble = function(template, options) {
 			var ctlFn = bit[0],
 				ctlOpts = bit[1];
 
-			// Inline text and attr handlers for speed
-			if (ctlFn === 'text') {
+			// Inline raw, text and attr handlers for speed
+			if (ctlFn === 'raw') {
+				pushCode('val = ' + evalExprStub(ctlOpts) + ';\n');
+				cbExpr.push('val');
+			} else if (ctlFn === 'text') {
 				pushCode('val = ' + evalExprStub(ctlOpts) + ';\n'
 					// convert val to string
 					+ 'val = val || val === 0 ? "" + val : "";\n'
@@ -443,7 +446,9 @@ TAssembly.prototype._render = function (template, ctx) {
 			// control structure
 			var ctlFn = bit[0],
 				ctlOpts = bit[1];
-			if (ctlFn === 'text') {
+			if (ctlFn === 'raw') {
+				cb(this._evalExpr(ctlOpts, ctx));
+            } else if (ctlFn === 'text') {
 				val = this._evalExpr(ctlOpts, ctx);
 				if (!val && val !== 0) {
 					val = '';

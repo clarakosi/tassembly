@@ -90,6 +90,12 @@ TAssembly examples:
   expected to validate expressions. See the section detailing the model access
   options and expression format below for further detail.
 
+### raw
+Emit a raw object reference. Options is a single expression:
+```javascript
+['raw','m.rawContent']
+```
+
 ### text
 Emit text content. HTML-sensitive chars are escaped. Options is a single
 expression:
