@@ -144,6 +144,33 @@ function evalExprStub(expr) {
 	}
 }
 
+/*
+ * Safely evaluates expression, same as evalExprStub, but checks if all properties exist along the path
+ */
+function evalExprSafe(expr) {
+	expr = '' + expr;
+	if (/^'/.test(expr)) {
+		// String literal
+		return JSON.stringify(expr.slice(1, -1).replace(/\\'/g, "'"));
+	} else {
+		var newExpr;
+		var pathArr;
+		var rootArg;
+		if (/^[cm](?:\.[a-zA-Z_$]*)?$/.test(expr)) {
+			// Simple context or model reference
+			newExpr = expr;
+		} else {
+			newExpr = rewriteExpression(expr);
+		}
+		pathArr = newExpr.substring(newExpr.indexOf('.') + 1, newExpr.length).split('.');
+		rootArg = newExpr.substring(0, newExpr.indexOf('.'));
+		return '(function() { '
+			+ 'var parts = ' + JSON.stringify(pathArr) + ', rv, index;'
+			+ 'for (rv = ' + rootArg + ', index = 0; rv && index < parts.length; ++index) {rv = rv[parts[index]];}'
+			+ 'return rv;})()';
+	}
+}
+
 TAssembly.prototype._getTemplate = function (tpl, ctx) {
 	if (Array.isArray(tpl)) {
 		return tpl;
@@ -279,7 +306,8 @@ TAssembly.prototype.childContext = function (model, parCtx) {
 
 TAssembly.prototype._assemble = function(template, options) {
 	var code = [],
-		cbExpr = [];
+		cbExpr = [],
+		evalExprFun = options && options.safeEval ? evalExprSafe : evalExprStub;
 
 	function pushCode(codeChunk) {
 		if(cbExpr.length) {
@@ -306,10 +334,10 @@ TAssembly.prototype._assemble = function(template, options) {
 
 			// Inline raw, text and attr handlers for speed
 			if (ctlFn === 'raw') {
-				pushCode('val = ' + evalExprStub(ctlOpts) + ';\n');
+				pushCode('val = ' + evalExprFun(ctlOpts) + ';\n');
 				cbExpr.push('val');
 			} else if (ctlFn === 'text') {
-				pushCode('val = ' + evalExprStub(ctlOpts) + ';\n'
+				pushCode('val = ' + evalExprFun(ctlOpts) + ';\n'
 					// convert val to string
 					+ 'val = val || val === 0 ? "" + val : "";\n'
 					+ 'if(/[<&]/.test(val)) { val = val.replace(/[<&]/g,this._xmlEncoder); }\n');
@@ -319,7 +347,7 @@ TAssembly.prototype._assemble = function(template, options) {
 				for(var j = 0; j < names.length; j++) {
 					var name = names[j];
 					if (typeof ctlOpts[name] === 'string') {
-						code.push('val = ' + evalExprStub(ctlOpts[name]) + ';');
+						code.push('val = ' + evalExprFun(ctlOpts[name]) + ';');
 					} else {
 						// Must be an object
 						var attValObj = ctlOpts[name];
@@ -327,11 +355,11 @@ TAssembly.prototype._assemble = function(template, options) {
 						if (attValObj.app && Array.isArray(attValObj.app)) {
 							attValObj.app.forEach(function(appItem) {
 								if (appItem['if']) {
-									code.push('if(' + evalExprStub(appItem['if']) + '){');
+									code.push('if(' + evalExprFun(appItem['if']) + '){');
 									code.push('val += ' + JSON.stringify(appItem.v || '') + ';');
 									code.push('}');
 								} else if (appItem.ifnot) {
-									code.push('if(!' + evalExprStub(appItem.ifnot) + '){');
+									code.push('if(!' + evalExprFun(appItem.ifnot) + '){');
 									code.push('val += ' + JSON.stringify(appItem.v || ''));
 									code.push('}');
 								}
@@ -488,18 +516,20 @@ TAssembly.prototype.compile = function(template, options) {
 	if (!opts.cb) {
 		// top-level template: set up accumulator
 		code += 'var res = "", cb = function(bit) { res += bit; };\n';
-		// and the top context
-		code += 'var m = c;\n';
-		code += 'c = { rc: null, rm: m, m: m, pms: [m], '
-			+ 'g: options.globals, options: options, cb: cb }; c.rc = c;\n';
 	} else {
-		code += 'var m = c.m, cb = c.cb;\n';
+		code += 'var cb = options.cb;\n';
 	}
+	// and the top context
+	code += 'var m = c;\n';
+	code += 'c = { rc: null, rm: m, m: m, pms: [m], '
+	+ 'g: options.globals, options: options, cb: cb }; c.rc = c;\n';
 
 	code += this._assemble(template, opts);
 
 	if (!opts.cb) {
 		code += 'return res;';
+	} else {
+		code += 'return val;';
 	}
 
 	//console.error(code);
