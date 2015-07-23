@@ -516,7 +516,7 @@ TAssembly.prototype.compile = function(template, options) {
 		code += 'c = { rc: null, rm: m, m: m, pms: [m], '
 			+ 'g: options.globals, options: options, cb: cb }; c.rc = c;\n';
 	} else {
-		code += 'var m = c.m, cb = c.cb || options.cb;\n';
+		code += 'var m = c.m, cb = c.cb;\n';
 	}
 
 	code += this._assemble(template, opts);
@@ -525,7 +525,7 @@ TAssembly.prototype.compile = function(template, options) {
 		code += 'return res;';
 	}
 
-	//console.log('CODE!!!', code);
+	//console.error(code);
 
 	var fn = new Function('c', 'options', code),
 		boundFn = function(ctx, dynamicOpts) {
