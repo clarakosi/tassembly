@@ -50,7 +50,6 @@ function rewriteExpression (expr) {
 	// Rewrite the expression to be keyed on the context 'c'
 	// XXX: experiment with some local var definitions and selective
 	// rewriting for perf
-
 	var res = '',
 		i = -1,
 		c = '';
@@ -69,6 +68,19 @@ function rewriteExpression (expr) {
 			if (literal) {
 				res += literal[0];
 				i += literal[0].length - 1;
+			}
+		} else if (c === '.') {
+			literal = expr.slice(i).match(/^(\.[^\.]*)\.?/);
+			if (literal) {
+				literal = literal[1];
+			}
+			// If it's just an identifier reference, not a function call, wrap it in braces
+			if (/^\.[\w\-]+$/.test(literal)) {
+				literal = literal.substring(1);
+				res += '["' + literal + '"]';
+				i += literal.length;
+			} else {
+				res += c;
 			}
 		} else {
 			res += c;
@@ -123,7 +135,7 @@ TAssembly.prototype._evalExpr = function (expression, ctx) {
  * Directly dereference the ctx for simple expressions (the common case),
  * and fall back to the full method otherwise.
  */
-function evalExprStub(expr) {
+function evalExprStub(expr, options) {
 	expr = '' + expr;
 	var newExpr;
 	if (simpleBindingVar.test(expr)) {
@@ -136,38 +148,17 @@ function evalExprStub(expr) {
 		// Simple context or model reference
 		return expr;
 	} else {
+		var catchClause;
 		newExpr = rewriteExpression(expr);
+		if (options && options.errorHandler) {
+			catchClause = 'return c.options.errorHandler(e);'
+		} else {
+			catchClause = 'console.error("Error in " + ' + JSON.stringify(newExpr) +'+": " + e.toString()); return ""';
+		}
 		return '(function() { '
 			+ 'try {'
 			+ 'return ' + newExpr + ';'
-			+ '} catch (e) { console.error("Error in " + ' + JSON.stringify(newExpr) +'+": " + e.toString()); return "";}})()';
-	}
-}
-
-/*
- * Safely evaluates expression, same as evalExprStub, but checks if all properties exist along the path
- */
-function evalExprSafe(expr) {
-	expr = '' + expr;
-	if (/^'/.test(expr)) {
-		// String literal
-		return JSON.stringify(expr.slice(1, -1).replace(/\\'/g, "'"));
-	} else {
-		var newExpr;
-		var pathArr;
-		var rootArg;
-		if (/^[cm](?:\.[a-zA-Z_$]*)?$/.test(expr)) {
-			// Simple context or model reference
-			newExpr = expr;
-		} else {
-			newExpr = rewriteExpression(expr);
-		}
-		pathArr = newExpr.substring(newExpr.indexOf('.') + 1, newExpr.length).split('.');
-		rootArg = newExpr.substring(0, newExpr.indexOf('.'));
-		return '(function() { '
-			+ 'var parts = ' + JSON.stringify(pathArr) + ', rv, index;'
-			+ 'for (rv = ' + rootArg + ', index = 0; rv && index < parts.length; ++index) {rv = rv[parts[index]];}'
-			+ 'return rv;})()';
+			+ '} catch (e) { ' + catchClause + ' }})()';
 	}
 }
 
@@ -306,8 +297,7 @@ TAssembly.prototype.childContext = function (model, parCtx) {
 
 TAssembly.prototype._assemble = function(template, options) {
 	var code = [],
-		cbExpr = [],
-		evalExprFun = options && options.safeEval ? evalExprSafe : evalExprStub;
+		cbExpr = [];
 
 	function pushCode(codeChunk) {
 		if(cbExpr.length) {
@@ -334,10 +324,10 @@ TAssembly.prototype._assemble = function(template, options) {
 
 			// Inline raw, text and attr handlers for speed
 			if (ctlFn === 'raw') {
-				pushCode('val = ' + evalExprFun(ctlOpts) + ';\n');
+				pushCode('val = ' + evalExprStub(ctlOpts, options) + ';\n');
 				cbExpr.push('val');
 			} else if (ctlFn === 'text') {
-				pushCode('val = ' + evalExprFun(ctlOpts) + ';\n'
+				pushCode('val = ' + evalExprStub(ctlOpts, options) + ';\n'
 					// convert val to string
 					+ 'val = val || val === 0 ? "" + val : "";\n'
 					+ 'if(/[<&]/.test(val)) { val = val.replace(/[<&]/g,this._xmlEncoder); }\n');
@@ -347,7 +337,7 @@ TAssembly.prototype._assemble = function(template, options) {
 				for(var j = 0; j < names.length; j++) {
 					var name = names[j];
 					if (typeof ctlOpts[name] === 'string') {
-						code.push('val = ' + evalExprFun(ctlOpts[name]) + ';');
+						code.push('val = ' + evalExprStub(ctlOpts[name], options) + ';');
 					} else {
 						// Must be an object
 						var attValObj = ctlOpts[name];
@@ -355,11 +345,11 @@ TAssembly.prototype._assemble = function(template, options) {
 						if (attValObj.app && Array.isArray(attValObj.app)) {
 							attValObj.app.forEach(function(appItem) {
 								if (appItem['if']) {
-									code.push('if(' + evalExprFun(appItem['if']) + '){');
+									code.push('if(' + evalExprStub(appItem['if'], options) + '){');
 									code.push('val += ' + JSON.stringify(appItem.v || '') + ';');
 									code.push('}');
 								} else if (appItem.ifnot) {
-									code.push('if(!' + evalExprFun(appItem.ifnot) + '){');
+									code.push('if(!' + evalExprStub(appItem.ifnot, options) + '){');
 									code.push('val += ' + JSON.stringify(appItem.v || ''));
 									code.push('}');
 								}
@@ -515,24 +505,27 @@ TAssembly.prototype.compile = function(template, options) {
 	var code = '';
 	if (!opts.cb) {
 		// top-level template: set up accumulator
-		code += 'var res = "", cb = function(bit) { res += bit; };\n';
+		code += 'var res = "";\n';
+		if (opts.identityCallback) {
+			code += 'var cb = function(bit) { res = bit; };\n'
+		} else {
+			code += 'var cb = function(bit) { res += bit; };\n'
+		}
+		// and the top context
+		code += 'var m = c;\n';
+		code += 'c = { rc: null, rm: m, m: m, pms: [m], '
+			+ 'g: options.globals, options: options, cb: cb }; c.rc = c;\n';
 	} else {
-		code += 'var cb = options.cb;\n';
+		code += 'var m = c.m, cb = c.cb || options.cb;\n';
 	}
-	// and the top context
-	code += 'var m = c;\n';
-	code += 'c = { rc: null, rm: m, m: m, pms: [m], '
-	+ 'g: options.globals, options: options, cb: cb }; c.rc = c;\n';
 
 	code += this._assemble(template, opts);
 
 	if (!opts.cb) {
 		code += 'return res;';
-	} else {
-		code += 'return val;';
 	}
 
-	//console.error(code);
+	//console.log('CODE!!!', code);
 
 	var fn = new Function('c', 'options', code),
 		boundFn = function(ctx, dynamicOpts) {
