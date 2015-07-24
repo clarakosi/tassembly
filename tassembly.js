@@ -505,7 +505,7 @@ TAssembly.prototype.compile = function(template, options) {
 	var code = '';
 	if (!opts.cb) {
 		// top-level template: set up accumulator
-		code += 'var res = "";\n';
+		code += 'var res;\n';
 		code += 'var cb = function(bit) { if (res === undefined) { res = bit; } else { res += "" + bit;} };\n';
 		// and the top context
 		code += 'var m = c;\n';
