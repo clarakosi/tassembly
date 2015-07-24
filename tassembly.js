@@ -506,11 +506,7 @@ TAssembly.prototype.compile = function(template, options) {
 	if (!opts.cb) {
 		// top-level template: set up accumulator
 		code += 'var res = "";\n';
-		if (opts.identityCallback) {
-			code += 'var cb = function(bit) { res = bit; };\n'
-		} else {
-			code += 'var cb = function(bit) { res += bit; };\n'
-		}
+		code += 'var cb = function(bit) { if (res === undefined) { res = bit; } else { res += "" + bit;} };\n';
 		// and the top context
 		code += 'var m = c;\n';
 		code += 'c = { rc: null, rm: m, m: m, pms: [m], '
