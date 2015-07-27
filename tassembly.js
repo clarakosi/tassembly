@@ -69,19 +69,6 @@ function rewriteExpression (expr) {
 				res += literal[0];
 				i += literal[0].length - 1;
 			}
-		} else if (c === '.') {
-			literal = expr.slice(i).match(/^(\.[^\.]*)\.?/);
-			if (literal) {
-				literal = literal[1];
-			}
-			// If it's just an identifier reference, not a function call, wrap it in braces
-			if (/^\.[\w\-]+$/.test(literal)) {
-				literal = literal.substring(1);
-				res += '["' + literal + '"]';
-				i += literal.length;
-			} else {
-				res += c;
-			}
 		} else {
 			res += c;
 		}
@@ -503,21 +490,24 @@ TAssembly.prototype.compile = function(template, options) {
 	}
 
 	var code = '';
-	if (!opts.cb) {
+	if (!opts.nestedTemplate) {
 		// top-level template: set up accumulator
-		code += 'var res;\n';
-		code += 'var cb = function(bit) { if (res === undefined) { res = bit; } else { res += "" + bit;} };\n';
+		if (opts.cb) {
+			code += 'cb = options.cb;\n';
+		} else {
+			code += 'var res = "", cb = function(bit) { res += bit; };\n';
+		}
 		// and the top context
 		code += 'var m = c;\n';
 		code += 'c = { rc: null, rm: m, m: m, pms: [m], '
-			+ 'g: options.globals, options: options, cb: cb }; c.rc = c;\n';
+			+ 'g: options.globals, options: options, cb: cb, nestedTemplate: true }; c.rc = c;\n';
 	} else {
 		code += 'var m = c.m, cb = c.cb;\n';
 	}
 
 	code += this._assemble(template, opts);
 
-	if (!opts.cb) {
+	if (!opts.nestedTemplate && !opts.cb) {
 		code += 'return res;';
 	}
 
