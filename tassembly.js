@@ -50,7 +50,6 @@ function rewriteExpression (expr) {
 	// Rewrite the expression to be keyed on the context 'c'
 	// XXX: experiment with some local var definitions and selective
 	// rewriting for perf
-
 	var res = '',
 		i = -1,
 		c = '';
@@ -123,7 +122,7 @@ TAssembly.prototype._evalExpr = function (expression, ctx) {
  * Directly dereference the ctx for simple expressions (the common case),
  * and fall back to the full method otherwise.
  */
-function evalExprStub(expr) {
+function evalExprStub(expr, options) {
 	expr = '' + expr;
 	var newExpr;
 	if (simpleBindingVar.test(expr)) {
@@ -136,11 +135,17 @@ function evalExprStub(expr) {
 		// Simple context or model reference
 		return expr;
 	} else {
+		var catchClause;
 		newExpr = rewriteExpression(expr);
+		if (options && options.errorHandler) {
+			catchClause = 'return c.options.errorHandler(e);'
+		} else {
+			catchClause = 'console.error("Error in " + ' + JSON.stringify(newExpr) +'+": " + e.toString()); return ""';
+		}
 		return '(function() { '
 			+ 'try {'
 			+ 'return ' + newExpr + ';'
-			+ '} catch (e) { console.error("Error in " + ' + JSON.stringify(newExpr) +'+": " + e.toString()); return "";}})()';
+			+ '} catch (e) { ' + catchClause + ' }})()';
 	}
 }
 
@@ -306,10 +311,10 @@ TAssembly.prototype._assemble = function(template, options) {
 
 			// Inline raw, text and attr handlers for speed
 			if (ctlFn === 'raw') {
-				pushCode('val = ' + evalExprStub(ctlOpts) + ';\n');
+				pushCode('val = ' + evalExprStub(ctlOpts, options) + ';\n');
 				cbExpr.push('val');
 			} else if (ctlFn === 'text') {
-				pushCode('val = ' + evalExprStub(ctlOpts) + ';\n'
+				pushCode('val = ' + evalExprStub(ctlOpts, options) + ';\n'
 					// convert val to string
 					+ 'val = val || val === 0 ? "" + val : "";\n'
 					+ 'if(/[<&]/.test(val)) { val = val.replace(/[<&]/g,this._xmlEncoder); }\n');
@@ -319,7 +324,7 @@ TAssembly.prototype._assemble = function(template, options) {
 				for(var j = 0; j < names.length; j++) {
 					var name = names[j];
 					if (typeof ctlOpts[name] === 'string') {
-						code.push('val = ' + evalExprStub(ctlOpts[name]) + ';');
+						code.push('val = ' + evalExprStub(ctlOpts[name], options) + ';');
 					} else {
 						// Must be an object
 						var attValObj = ctlOpts[name];
@@ -327,11 +332,11 @@ TAssembly.prototype._assemble = function(template, options) {
 						if (attValObj.app && Array.isArray(attValObj.app)) {
 							attValObj.app.forEach(function(appItem) {
 								if (appItem['if']) {
-									code.push('if(' + evalExprStub(appItem['if']) + '){');
+									code.push('if(' + evalExprStub(appItem['if'], options) + '){');
 									code.push('val += ' + JSON.stringify(appItem.v || '') + ';');
 									code.push('}');
 								} else if (appItem.ifnot) {
-									code.push('if(!' + evalExprStub(appItem.ifnot) + '){');
+									code.push('if(!' + evalExprStub(appItem.ifnot, options) + '){');
 									code.push('val += ' + JSON.stringify(appItem.v || ''));
 									code.push('}');
 								}
@@ -485,13 +490,17 @@ TAssembly.prototype.compile = function(template, options) {
 	}
 
 	var code = '';
-	if (!opts.cb) {
+	if (!opts.nestedTemplate) {
 		// top-level template: set up accumulator
-		code += 'var res = "", cb = function(bit) { res += bit; };\n';
+		if (opts.cb) {
+			code += 'cb = options.cb;\n';
+		} else {
+			code += 'var res = "", cb = function(bit) { res += bit; };\n';
+		}
 		// and the top context
 		code += 'var m = c;\n';
 		code += 'c = { rc: null, rm: m, m: m, pms: [m], '
-			+ 'g: options.globals, options: options, cb: cb }; c.rc = c;\n';
+			+ 'g: options.globals, options: options, cb: cb, nestedTemplate: true }; c.rc = c;\n';
 	} else {
 		code += 'var m = c.m, cb = c.cb;\n';
 	}
