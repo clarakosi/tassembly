@@ -507,7 +507,7 @@ TAssembly.prototype.compile = function(template, options) {
 
 	code += this._assemble(template, opts);
 
-	if (!opts.nestedTemplate && !opts.cb) {
+	if (!opts.cb) {
 		code += 'return res;';
 	}
 
