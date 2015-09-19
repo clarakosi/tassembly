@@ -1,11 +1,13 @@
 {
-	"name": "tassembly",
-	"version": "0.1.7",
-	"main": "tassembly.js",
-	"devDependencies": {
-		"browserify": "*"
-	},
-	"scripts": {
-		"prepublish": "browserify -s tassembly tassembly.js > browser/tassembly.orig.js && [ -x /usr/bin/closure-compiler ] && closure-compiler browser/tassembly.orig.js > browser/tassembly.js"
-	}
+  "name": "tassembly",
+  "version": "0.1.8",
+  "main": "tassembly.js",
+  "devDependencies": {
+    "browserify": "*",
+    "mocha": "^2.3.2"
+  },
+  "scripts": {
+    "test": "npm run browserify && mocha",
+    "browserify": "browserify -s tassembly tassembly.js > browser/tassembly.orig.js && [ -x /usr/bin/closure-compiler ] && closure-compiler browser/tassembly.orig.js > browser/tassembly.js"
+  }
 }
