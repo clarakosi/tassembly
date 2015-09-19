@@ -57,7 +57,7 @@ function rewriteExpression (expr) {
 		if (/^$|[\[:(,]/.test(c)) {
 			res += c;
 			if (/[pri]/.test(expr[i+1])
-				&& /(?:p(?:[cm]s?)?|r[mc]|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
+				&& /(?:p(?:[cm]s?)|r[mc]|i)(?:[\.\)\]}]|$)/.test(expr.slice(i+1))) {
 				// Prefix with full context object; only the local view model
 				// 'm' and the context 'c' is defined locally for now
 				res += 'c.';
@@ -122,7 +122,7 @@ TAssembly.prototype._evalExpr = function (expression, ctx) {
  * Directly dereference the ctx for simple expressions (the common case),
  * and fall back to the full method otherwise.
  */
-function evalExprStub(expr, options) {
+function evalExprStub(expr, options, inlineVal) {
 	expr = '' + expr;
 	var newExpr;
 	if (simpleBindingVar.test(expr)) {
@@ -142,10 +142,15 @@ function evalExprStub(expr, options) {
 		} else {
 			catchClause = 'console.error("Error in " + ' + JSON.stringify(newExpr) +'+": " + e.toString()); return ""';
 		}
-		return '(function() { '
-			+ 'try {'
-			+ 'return ' + newExpr + ';'
-			+ '} catch (e) { ' + catchClause + ' }})()';
+        if (inlineVal) {
+            return 'try { val = ' + newExpr + ';'
+			    + '} catch (e) { ' + catchClause + ' }';
+        } else {
+            return '(function() { '
+                + 'try {'
+                + 'return ' + newExpr + ';'
+                + '} catch (e) { ' + catchClause + ' }})()';
+        }
 	}
 }
 
@@ -311,7 +316,7 @@ TAssembly.prototype._assemble = function(template, options) {
 
 			// Inline raw, text and attr handlers for speed
 			if (ctlFn === 'raw') {
-				pushCode('val = ' + evalExprStub(ctlOpts, options) + ';\n');
+				pushCode(evalExprStub(ctlOpts, options, true) + '\n');
 				cbExpr.push('val');
 			} else if (ctlFn === 'text') {
 				pushCode('val = ' + evalExprStub(ctlOpts, options) + ';\n'
