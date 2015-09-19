@@ -144,7 +144,7 @@ function evalExprStub(expr, options, inlineVal) {
 		}
         if (inlineVal) {
             return 'try { val = ' + newExpr + ';'
-			    + '} catch (e) { ' + catchClause + ' }';
+			    + '} catch (e) { val = ' + catchClause + ' }';
         } else {
             return '(function() { '
                 + 'try {'
