@@ -123,33 +123,34 @@ TAssembly.prototype._evalExpr = function (expression, ctx) {
  * and fall back to the full method otherwise.
  */
 function evalExprStub(expr, options, inlineVal) {
+    inlineVal = inlineVal || '';
 	expr = '' + expr;
 	var newExpr;
 	if (simpleBindingVar.test(expr)) {
 		newExpr = rewriteExpression(expr);
-		return newExpr;
+		return inlineVal + newExpr;
 	} else if (/^'/.test(expr)) {
 		// String literal
-		return JSON.stringify(expr.slice(1,-1).replace(/\\'/g, "'"));
+		return inlineVal + JSON.stringify(expr.slice(1,-1).replace(/\\'/g, "'"));
 	} else if (/^[cm](?:\.[a-zA-Z_$]*)?$/.test(expr)) {
 		// Simple context or model reference
-		return expr;
+		return inlineVal + expr;
 	} else {
 		var catchClause;
 		newExpr = rewriteExpression(expr);
 		if (options && options.errorHandler) {
-			catchClause = 'return c.options.errorHandler(e);'
+			catchClause = 'c.options.errorHandler(e)'
 		} else {
-			catchClause = 'console.error("Error in " + ' + JSON.stringify(newExpr) +'+": " + e.toString()); return ""';
+			catchClause = '(console.error("Error in " + ' + JSON.stringify(newExpr) +'+": " + e.toString()) || "")';
 		}
         if (inlineVal) {
-            return 'try { val = ' + newExpr + ';'
-			    + '} catch (e) { val = ' + catchClause + ' }';
+            return 'try {' + inlineVal + newExpr + ';'
+			    + '} catch (e) {' + inlineVal +  + catchClause + '; }';
         } else {
             return '(function() { '
                 + 'try {'
                 + 'return ' + newExpr + ';'
-                + '} catch (e) { ' + catchClause + ' }})()';
+                + '} catch (e) { return ' + catchClause + '; }})()';
         }
 	}
 }
@@ -316,7 +317,7 @@ TAssembly.prototype._assemble = function(template, options) {
 
 			// Inline raw, text and attr handlers for speed
 			if (ctlFn === 'raw') {
-				pushCode(evalExprStub(ctlOpts, options, true) + '\n');
+				pushCode(evalExprStub(ctlOpts, options, 'val = ') + ';\n');
 				cbExpr.push('val');
 			} else if (ctlFn === 'text') {
 				pushCode('val = ' + evalExprStub(ctlOpts, options) + ';\n'
